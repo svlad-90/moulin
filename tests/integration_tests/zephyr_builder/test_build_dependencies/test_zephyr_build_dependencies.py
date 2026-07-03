@@ -222,6 +222,13 @@ def _assert_success(result, label: str):
     )
 
 
+def _assert_contains_with_debug(text: str, needle: str, case: FakeZephyrBuild):
+    if needle not in text:
+        report = case.debug_report()
+        print(report)
+        assert needle in text, report
+
+
 @pytest.mark.integration
 def test_zephyr_build_files_dependency_policy_uses_post_build_metadata():
     """Verifies 'build_files' deps policy writes Zephyr/CMake build metadata."""
@@ -235,8 +242,8 @@ def test_zephyr_build_files_dependency_policy_uses_post_build_metadata():
         depfile = case.depfile_copy()
         assert "workspace/build/zephyr/zephyr.bin:" in depfile
         assert "workspace/app/src/main.c" in depfile
-        assert "workspace/app/CMakeLists.txt" in depfile, case.debug_report()
-        assert "workspace/config/nonstandard-build.conf" in depfile, case.debug_report()
+        _assert_contains_with_debug(depfile, "workspace/app/CMakeLists.txt", case)
+        _assert_contains_with_debug(depfile, "workspace/config/nonstandard-build.conf", case)
         assert "workspace/manifest.yml" in depfile
         assert "workspace/fetched/manifest.yml" not in depfile
         assert (case.workspace / "west-invocation.log").is_file()
@@ -271,7 +278,7 @@ def test_zephyr_all_files_dependency_policy_merges_fetcher_and_builder_deps():
         depfile = case.depfile_copy()
         assert "workspace/build/zephyr/zephyr.bin:" in depfile
         assert "workspace/app/src/main.c" in depfile
-        assert "workspace/config/nonstandard-build.conf" in depfile, case.debug_report()
+        _assert_contains_with_debug(depfile, "workspace/config/nonstandard-build.conf", case)
         assert "workspace/manifest.yml" in depfile
         assert "workspace/fetched/manifest.yml" in depfile
 
@@ -330,9 +337,7 @@ def test_zephyr_configure_input_change_rebuilds_component():
         _assert_success(result, "configure-input rebuild")
 
         explain = result.stdout + result.stderr
-        assert "workspace/config/nonstandard-build.conf" in explain, (
-            f"ninja explain:\n{explain}\n\n{case.debug_report()}"
-        )
+        _assert_contains_with_debug(explain, "workspace/config/nonstandard-build.conf", case)
         assert "dirty" in explain or "older than most recent input" in explain
         assert case.west_build_count() == 2
         assert case.dep_invocations().count("--dep test 0") == 2
