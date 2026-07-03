@@ -116,7 +116,11 @@ class UnpackFetcher:
         return stamp
 
     def get_file_list(self) -> List[str]:
-        "Get list of files in archive"
+        """Get list of files in archive.
+
+        Dependency-only code may instantiate fetchers with generator=None.
+        This method must not depend on Ninja rule generation state.
+        """
 
         return _get_archive_file_list(self.type, self.fname, self.out_dir)
 

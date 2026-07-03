@@ -84,7 +84,11 @@ class RepoFetcher:
         return sync_stamp
 
     def get_file_list(self) -> List[str]:
-        "Get list of files under repo control"
+        """Get list of files under repo control.
+
+        Dependency-only code may instantiate fetchers with generator=None.
+        This method must not depend on Ninja rule generation state.
+        """
 
         # First, get list of projects
         repo_out = subprocess.run(["repo", "list"],

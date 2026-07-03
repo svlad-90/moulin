@@ -78,25 +78,51 @@ def generate_build(conf: MoulinConfiguration,
 
 def generate_fetcher_dyndep(conf: MoulinConfiguration, component: str):
     _flatten_sources(conf)
-    generator = make_syntax.Writer(open(f".moulin_{component}.d", 'w'), width=120)
 
+    deps_context = _get_dependency_context(conf, component)
+    deps = _get_fetcher_file_list(deps_context)
+    _write_dyndep(component, deps_context["targets"], deps)
+
+
+def _get_dependency_context(conf: MoulinConfiguration, component: str):
     builder_modules, fetcher_modules = _get_modules(conf, None)
     component_node = conf.get_root()["components"][component]
     build_dir = component_node.get("build-dir", component).as_str
     builder_node = component_node["builder"]
     builder_type = builder_node["type"].as_str
     builder_module = builder_modules[builder_type]
-    builder = builder_module.get_builder(builder_node, component, build_dir, [], generator)
+    # Dependency-only mode does not generate Ninja rules. Builders that provide
+    # dependency metadata must keep that path independent from rule generation.
+    builder = builder_module.get_builder(builder_node, component, build_dir, [], None)
 
-    deps: List[str] = []
     targets = builder.get_targets()
+    return {
+        "build_dir": build_dir,
+        "component_node": component_node,
+        "fetcher_modules": fetcher_modules,
+        "builder": builder,
+        "targets": targets,
+    }
+
+
+def _get_fetcher_file_list(deps_context) -> List[str]:
+    deps: List[str] = []
+    component_node = deps_context["component_node"]
     if "sources" in component_node:
         for source in component_node["sources"]:
             source_type = source["type"].as_str
-            fetcher_module = fetcher_modules[source_type]
-            fetcher = fetcher_module.get_fetcher(source, build_dir, generator)
+            fetcher_module = deps_context["fetcher_modules"][source_type]
+            # Dependency-only mode does not generate Ninja rules. Fetchers that
+            # expose get_file_list must make that method independent from generator.
+            fetcher = fetcher_module.get_fetcher(source, deps_context["build_dir"], None)
             deps.extend(fetcher.get_file_list())
-    generator.simple_dep(targets, deps)
+    return deps
+
+
+def _write_dyndep(component: str, targets: List[str], deps: List[str]) -> None:
+    with open(f".moulin_{component}.d", 'w') as stream:
+        generator = make_syntax.Writer(stream, width=120)
+        generator.simple_dep(targets, sorted(set(deps)))
 
 
 def _gen_regenerate(conf_file_name, generator: ninja_syntax.Writer):

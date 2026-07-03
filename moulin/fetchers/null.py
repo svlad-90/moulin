@@ -31,7 +31,11 @@ class NullFetcher:
         return "null.stamp"
 
     def get_file_list(self) -> List[str]:
-        """Get list of files under fetcher control"""
+        """Get list of files under fetcher control.
+
+        Dependency-only code may instantiate fetchers with generator=None.
+        This method must not depend on Ninja rule generation state.
+        """
         return []
 
     def capture_state(self):

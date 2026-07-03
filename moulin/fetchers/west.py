@@ -101,7 +101,11 @@ class WestFetcher:
         return update_target
 
     def get_file_list(self) -> List[str]:
-        """Get list of files under version control"""
+        """Get list of files under version control.
+
+        Dependency-only code may instantiate fetchers with generator=None.
+        This method must not depend on Ninja rule generation state.
+        """
 
         # First, get list of projects
         west_out = subprocess.run(["west", "list", "--format='{path}'"],

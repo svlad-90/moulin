@@ -56,6 +56,11 @@ class HTTPFetcher:
         return self.output_file
 
     def get_file_list(self) -> List[str]:
+        """Return the downloaded file path.
+
+        Dependency-only code may instantiate fetchers with generator=None.
+        This method must not depend on Ninja rule generation state.
+        """
         return [self.output_file]
 
     def capture_state(self):
