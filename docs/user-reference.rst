@@ -55,12 +55,16 @@ because you can see what exactly is passed to fetchers and builders.
 Internal command line options
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-There is :code:`--fetcherdep` command line option which is internal,
-and it is even hidden from :code:`-h` output. It is used by `moulin` to
-generate dynamic dependency files for Ninja, so Ninja can track changes
-inside components.
+There are :code:`--fetcherdep` and :code:`--dep` command line options
+which are internal, and they are even hidden from :code:`-h` output.
+They are used by `moulin` to generate dynamic dependency files for
+Ninja, so Ninja can track changes inside components.
 
-This option is not meant to be used by a user.
+:code:`--fetcherdep` is the legacy mode that writes dependencies reported
+by fetchers. :code:`--dep <component>` reads the component's
+:code:`dependency_policy` and writes the selected dependency set.
+
+These options are not meant to be used by a user.
 
 YAML sections
 -------------
@@ -140,6 +144,22 @@ Apart from two mandatory options, component description can contain the followin
 * :code:`default` - if set to :code:`true` - tells Ninja that this
   component is a default build target. This can be omitted and Ninja
   will choose the build target on its own rules.
+* :code:`dependency_policy` - selects which dynamic dependencies are
+  written for the component build target. The default value is
+  :code:`fetched_files`, which preserves the historical behavior.
+  Supported values are:
+
+  * :code:`fetched_files` - use only files reported by fetchers. This is
+    equivalent to the legacy :code:`--fetcherdep` mode.
+  * :code:`build_files` - use only files reported by the builder.
+  * :code:`all_files` - use the union of fetcher and builder files.
+
+  :code:`build_files` is useful for large source workspaces where
+  fetcher-reported dependencies are too broad and the builder can report
+  the files that were actually selected by the build system.
+  If :code:`build_files` or :code:`all_files` is selected for a builder that
+  does not support build file reporting, `moulin` rejects the configuration
+  before writing :code:`build.ninja` or starting any component build command.
 
 Variables
 ^^^^^^^^^
