@@ -238,6 +238,30 @@ class ZephyrBuilder:
             dep = self.__normalize_dep_path(path, zephyr_build_dir)
             if os.path.isfile(dep):
                 deps.append(dep)
+        if not deps:
+            log.warning(
+                "Zephyr configure dependency discovery returned no files for component '%s' in %s; "
+                "ninja inputs rc=%s stderr=%r stdout=%r parsed_paths=%r",
+                self.name,
+                zephyr_build_dir,
+                result.returncode,
+                result.stderr,
+                result.stdout,
+                paths,
+            )
+            if result.returncode != 0 and "unknown tool 'inputs'" in result.stderr:
+                query_result = subprocess.run(["ninja", "-C", zephyr_build_dir, "-t", "query", "build.ninja"],
+                                              stdout=subprocess.PIPE,
+                                              stderr=subprocess.PIPE,
+                                              text=True)
+                log.warning(
+                    "Zephyr configure dependency fallback query for component '%s' returned rc=%s "
+                    "stderr=%r stdout=%r",
+                    self.name,
+                    query_result.returncode,
+                    query_result.stderr,
+                    query_result.stdout,
+                )
         return deps
 
     @staticmethod
