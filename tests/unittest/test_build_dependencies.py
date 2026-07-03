@@ -12,7 +12,9 @@ import yaml
 
 from moulin.build_conf import MoulinConfiguration
 from moulin.build_generator import generate_build, generate_component_dyndep, generate_fetcher_dyndep
+from moulin.builders.zephyr import ZephyrBuilder
 from moulin.yaml_helpers import YAMLProcessingError
+from moulin.yaml_wrapper import YamlValue
 
 
 def _make_conf(doc):
@@ -249,6 +251,142 @@ class TestGeneratedDependencyRules(unittest.TestCase):
         self.assertLess(command.index(" ) && "), command.index("--dep $name"))
         self.assertNotIn("moulin_topdir", command)
         self.assertNotIn("--fetcherdep", command)
+
+
+class TestZephyrBuildDependencies(unittest.TestCase):
+
+    def test_build_files_dependency_policy_uses_zephyr_builder_files(self):
+        """Verifies 'build_files' deps policy writes Zephyr/CMake files only."""
+        doc = """
+desc: "Test build dependencies"
+components:
+  test:
+    build-dir: workspace
+    dependency_policy: build_files
+    sources:
+      - type: "null"
+    builder:
+      type: "zephyr"
+      board: "native_sim"
+      target: "app"
+      work_dir: "zephyr/build"
+      target_images:
+        - "zephyr/zephyr.bin"
+        """
+        old_cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as tmp_dir, \
+             patch("moulin.build_generator._get_fetcher_file_list",
+                   return_value=["workspace/manifest.yml"]):
+            os.chdir(tmp_dir)
+            try:
+                os.makedirs("workspace/app")
+                os.makedirs("workspace/zephyr/build")
+                with open("workspace/app/main.c", "w", encoding="utf-8") as stream:
+                    stream.write("int main(void) { return 0; }\n")
+                with open("workspace/zephyr/build/compile_commands.json",
+                          "w",
+                          encoding="utf-8") as stream:
+                    stream.write(
+                        '[{"directory": "workspace/app", '
+                        '"command": "cc -c main.c", "file": "main.c"}]')
+
+                generate_component_dyndep(_make_conf(doc), "test")
+                with open(".moulin_test.d", encoding="utf-8") as stream:
+                    depfile = stream.read()
+
+                self.assertIn("workspace/zephyr/zephyr.bin:", depfile)
+                self.assertIn("workspace/app/main.c", depfile)
+                self.assertNotIn("workspace/manifest.yml", depfile)
+            finally:
+                os.chdir(old_cwd)
+
+    def test_all_files_dependency_policy_uses_fetcher_and_builder_files(self):
+        """Verifies 'all_files' deps policy writes fetcher and builder files."""
+        doc = """
+desc: "Test build dependencies"
+components:
+  test:
+    build-dir: workspace
+    dependency_policy: all_files
+    sources:
+      - type: "null"
+    builder:
+      type: "zephyr"
+      board: "native_sim"
+      target: "app"
+      work_dir: "zephyr/build"
+      target_images:
+        - "zephyr/zephyr.bin"
+        """
+        old_cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as tmp_dir, \
+             patch("moulin.build_generator._get_fetcher_file_list",
+                   return_value=["workspace/manifest.yml"]), \
+             patch("moulin.builders.zephyr.ZephyrBuilder.get_build_file_list",
+                   return_value=["workspace/app/main.c"]):
+            os.chdir(tmp_dir)
+            try:
+                generate_component_dyndep(_make_conf(doc), "test")
+                with open(".moulin_test.d", encoding="utf-8") as stream:
+                    depfile = stream.read()
+
+                self.assertIn("workspace/zephyr/zephyr.bin:", depfile)
+                self.assertIn("workspace/manifest.yml", depfile)
+                self.assertIn("workspace/app/main.c", depfile)
+            finally:
+                os.chdir(old_cwd)
+
+    def test_build_file_list_reads_compile_commands_without_generator(self):
+        """Verifies Zephyr build-file reporting works without a generator."""
+        doc = """
+type: "zephyr"
+board: "native_sim"
+target: "app"
+work_dir: "zephyr/build"
+target_images:
+  - "zephyr/zephyr.bin"
+        """
+        old_cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                os.makedirs("workspace/app")
+                os.makedirs("workspace/zephyr/build")
+                with open("workspace/app/main.c", "w", encoding="utf-8") as stream:
+                    stream.write("int main(void) { return 0; }\n")
+                with open("workspace/zephyr/build/compile_commands.json",
+                          "w",
+                          encoding="utf-8") as stream:
+                    stream.write(
+                        '[{"directory": "workspace/app", '
+                        '"command": "cc -c main.c", "file": "main.c"}]')
+
+                builder = ZephyrBuilder(YamlValue(yaml.compose(doc)), "test", "workspace", [], None)
+                self.assertEqual(builder.get_build_file_list(),
+                                 ["workspace/app/main.c"])
+            finally:
+                os.chdir(old_cwd)
+
+    def test_build_file_list_warns_when_metadata_reports_no_files(self):
+        """Verifies empty Zephyr metadata is reported without failing."""
+        doc = """
+type: "zephyr"
+board: "native_sim"
+target: "app"
+work_dir: "zephyr/build"
+target_images:
+  - "zephyr/zephyr.bin"
+        """
+        old_cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            os.chdir(tmp_dir)
+            try:
+                builder = ZephyrBuilder(YamlValue(yaml.compose(doc)), "test", "workspace", [], None)
+                with self.assertLogs("moulin.builders.zephyr", level="WARNING") as logs:
+                    self.assertEqual(builder.get_build_file_list(), [])
+                self.assertIn("did not report any build files", "\n".join(logs.output))
+            finally:
+                os.chdir(old_cwd)
 
 
 if __name__ == "__main__":
