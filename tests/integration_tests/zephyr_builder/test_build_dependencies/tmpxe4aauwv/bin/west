@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+from pathlib import Path
+import subprocess
+import sys
+
+log = Path("west-invocation.log")
+previous = log.read_text(encoding="utf-8") if log.exists() else ""
+log.write_text(previous + " ".join(sys.argv[1:]) + "\n", encoding="utf-8")
+
+args = sys.argv[1:]
+if args == ["manifest", "--path"]:
+    print(Path("manifest.yml").resolve())
+    raise SystemExit(0)
+
+if False:
+    raise SystemExit("intentional fake west build failure")
+
+if not args or args[0] != "build":
+    raise SystemExit("unexpected west command")
+work_dir = args[args.index("-d") + 1] if "-d" in args else "build"
+build_dir = Path(work_dir)
+# The fake west command creates real CMake/Ninja metadata,
+# which the later --dep invocation reads to produce the final
+# depfile.
+subprocess.run([
+    "cmake",
+    "-S", "app",
+    "-B", str(build_dir),
+    "-G", "Ninja",
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+], check=True)
+subprocess.run(["ninja", "-C", str(build_dir)], check=True)
+(build_dir / "zephyr").mkdir(parents=True, exist_ok=True)
+(build_dir / "zephyr" / "zephyr.bin").write_text("fake image\n", encoding="utf-8")

@@ -79,6 +79,41 @@ class FakeZephyrBuild:
     def dep_invocations(self) -> str:
         return (self.tmp_dir / "dep-invocations.log").read_text(encoding="utf-8")
 
+    def debug_report(self) -> str:
+        build_dir = self.workspace / "build"
+        sections = []
+
+        def add_file(label: str, path: Path) -> None:
+            if path.exists():
+                sections.append(f"{label}:\n{path.read_text(encoding='utf-8')}")
+            else:
+                sections.append(f"{label}: <missing>")
+
+        def add_ninja_tool(tool: str) -> None:
+            if not build_dir.exists():
+                sections.append(f"ninja -t {tool}: build dir <missing>")
+                return
+            result = subprocess.run(
+                ["ninja", "-C", str(build_dir), "-t", tool, "build.ninja"],
+                cwd=self.tmp_dir,
+                env=self.env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            sections.append(
+                f"ninja -t {tool} build.ninja rc={result.returncode}\n"
+                f"stdout:\n{result.stdout}\n"
+                f"stderr:\n{result.stderr}"
+            )
+
+        add_file("depfile.d", self.tmp_dir / "depfile.d")
+        add_file("dep-invocations.log", self.tmp_dir / "dep-invocations.log")
+        add_file("west-invocation.log", self.workspace / "west-invocation.log")
+        add_ninja_tool("inputs")
+        add_ninja_tool("query")
+        return "\n\n".join(sections)
+
     def _write_workspace(self):
         shutil.copytree(self.resources_dir / "workspace", self.workspace)
         with tarfile.open(self.tmp_dir / "source.tar", "w") as archive:
@@ -200,8 +235,8 @@ def test_zephyr_build_files_dependency_policy_uses_post_build_metadata():
         depfile = case.depfile_copy()
         assert "workspace/build/zephyr/zephyr.bin:" in depfile
         assert "workspace/app/src/main.c" in depfile
-        assert "workspace/app/CMakeLists.txt" in depfile
-        assert "workspace/config/nonstandard-build.conf" in depfile
+        assert "workspace/app/CMakeLists.txt" in depfile, case.debug_report()
+        assert "workspace/config/nonstandard-build.conf" in depfile, case.debug_report()
         assert "workspace/manifest.yml" in depfile
         assert "workspace/fetched/manifest.yml" not in depfile
         assert (case.workspace / "west-invocation.log").is_file()
@@ -236,7 +271,7 @@ def test_zephyr_all_files_dependency_policy_merges_fetcher_and_builder_deps():
         depfile = case.depfile_copy()
         assert "workspace/build/zephyr/zephyr.bin:" in depfile
         assert "workspace/app/src/main.c" in depfile
-        assert "workspace/config/nonstandard-build.conf" in depfile
+        assert "workspace/config/nonstandard-build.conf" in depfile, case.debug_report()
         assert "workspace/manifest.yml" in depfile
         assert "workspace/fetched/manifest.yml" in depfile
 
@@ -295,7 +330,9 @@ def test_zephyr_configure_input_change_rebuilds_component():
         _assert_success(result, "configure-input rebuild")
 
         explain = result.stdout + result.stderr
-        assert "workspace/config/nonstandard-build.conf" in explain
+        assert "workspace/config/nonstandard-build.conf" in explain, (
+            f"ninja explain:\n{explain}\n\n{case.debug_report()}"
+        )
         assert "dirty" in explain or "older than most recent input" in explain
         assert case.west_build_count() == 2
         assert case.dep_invocations().count("--dep test 0") == 2
