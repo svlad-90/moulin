@@ -25,7 +25,7 @@ def _require_cmake_ninja_toolchain():
 
 class FakeZephyrBuild:
     def __init__(self, script_dir: Path, policy: str, fail_build: bool = False):
-        self.tmp_ctx = tempfile.TemporaryDirectory(dir=script_dir)
+        self.tmp_ctx = tempfile.TemporaryDirectory(prefix="moulin-zephyr-build-deps-")
         self.tmp_dir = Path(self.tmp_ctx.name)
         self.workspace = self.tmp_dir / "workspace"
         self.fake_bin = self.tmp_dir / "bin"
