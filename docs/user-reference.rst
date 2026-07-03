@@ -62,7 +62,8 @@ Ninja, so Ninja can track changes inside components.
 
 :code:`--fetcherdep` is the legacy mode that writes dependencies reported
 by fetchers. :code:`--dep <component>` reads the component's
-:code:`dependency_policy` and writes the selected dependency set.
+:code:`dependency_policy` and writes the selected dependency set after a
+successful build command.
 
 These options are not meant to be used by a user.
 
@@ -153,6 +154,13 @@ Apart from two mandatory options, component description can contain the followin
     equivalent to the legacy :code:`--fetcherdep` mode.
   * :code:`build_files` - use only files reported by the builder.
   * :code:`all_files` - use the union of fetcher and builder files.
+
+  The policy affects automatic Ninja depfile generation only for builders
+  that emit Moulin component depfiles. At the moment this applies to
+  :code:`custom_script`, :code:`yocto`, and :code:`zephyr` builders. Other
+  builders define dependencies according to their own build rules, such as
+  fetcher stamps or explicit builder inputs, and do not automatically invoke
+  :code:`--dep` for fetched-file tracking.
 
   :code:`build_files` is useful for large source workspaces where
   fetcher-reported dependencies are too broad and the builder can report
